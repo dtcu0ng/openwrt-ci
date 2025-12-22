@@ -1,0 +1,191 @@
+name: IPQ60XX-ALL-CTD
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Chạy tự động mỗi ngày lúc 02:00 sáng (UTC+7)
+    - cron: 0 19 * * *
+
+env:
+  REPO_URL: https://github.com/LiBwrt/openwrt-6.x.git
+  REPO_BRANCH: main
+  CONFIG_FILE: configs/ipq60xx.config
+  DIY_SCRIPT: diy-script.sh
+  CLASH_KERNEL: amd64
+  CACHE_TOOLCHAIN: true
+  UPLOAD_BIN_DIR: false
+  FIRMWARE_RELEASE: true
+  FIRMWARE_TAG: IPQ60XX-ALL
+  TZ: Asia/Ho_Chi_Minh
+
+jobs:
+  Build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Kiểm tra tài nguyên máy build (CPU / RAM / Disk)
+      run: |
+        echo "⚠️ Cảnh báo"
+        echo "Máy GitHub Actions có tài nguyên giới hạn."
+        echo "Nếu chọn quá nhiều package, có thể gây chậm hoặc lỗi build."
+        echo -e "Các CPU thường gặp (từ mạnh đến yếu): 7763, 8370C, 8272CL, 8171M, E5-2673 \n"
+        echo "---------------- Thông tin CPU ----------------"
+        echo "Số CPU vật lý: $(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+        echo -e "Thông tin core:\n$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c)\n"
+        echo "---------------- Thông tin RAM ----------------"
+        sudo lshw -short -C memory | grep GiB
+        echo "---------------- Thông tin ổ đĩa ----------------"
+        echo "Số ổ đĩa: $(ls /dev/sd* | grep -v [1-9] | wc -l)"
+        df -hT
+
+    - name: Khởi tạo môi trường build
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        # Xóa Docker image cũ
+        docker rmi $(docker images -q) || true
+
+        # Dọn dẹp các thành phần không cần thiết
+        sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android $AGENT_TOOLSDIRECTORY
+        sudo -E apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* \
+          powershell openjdk* mongodb* moby* || true
+
+        # Cài đặt phụ thuộc cần thiết cho OpenWrt
+        sudo -E apt-get update
+        sudo -E apt-get install -y $(curl -fsSL is.gd/depends_ubuntu_2204)
+
+        # Dọn rác hệ thống
+        sudo -E systemctl daemon-reload
+        sudo -E apt-get autoremove --purge -y
+        sudo -E apt-get clean
+
+        # Thiết lập múi giờ Việt Nam
+        sudo timedatectl set-timezone "$TZ"
+
+    - name: Mở rộng dung lượng build (ghép ổ đĩa)
+      uses: easimon/maximize-build-space@master
+      with:
+        swap-size-mb: 1024
+        temp-reserve-mb: 100
+        root-reserve-mb: 1024
+
+    - name: Checkout repository workflow
+      uses: actions/checkout@main
+
+    - name: Clone mã nguồn OpenWrt
+      run: |
+        df -hT $GITHUB_WORKSPACE
+        git clone --depth 1 -b $REPO_BRANCH $REPO_URL openwrt
+        cd openwrt
+        echo "OPENWRT_PATH=$PWD" >> $GITHUB_ENV
+
+        # Lấy thông tin commit mới nhất
+        VERSION_INFO=$(git show -s --date=short --format="Tác giả: %an<br/>Thời gian: %cd<br/>Nội dung: %s<br/>Hash: %H")
+        echo "VERSION_INFO=$VERSION_INFO" >> $GITHUB_ENV
+
+        # Lấy phiên bản kernel
+        VERSION_KERNEL=$(grep -oP 'LINUX_KERNEL_HASH-\K[0-9]+\.[0-9]+\.[0-9]+' include/kernel-6.6)
+        echo "VERSION_KERNEL=$VERSION_KERNEL" >> $GITHUB_ENV
+
+        # Lấy log commit trong 24h gần nhất
+        if git log --since="$(date -d 'yesterday 00:00' '+%Y-%m-%dT%H:%M:%S')" \
+                   --until="$(date -d 'today 00:00' '+%Y-%m-%dT%H:%M:%S')" \
+                   --pretty=format:"%h %s" --no-merges -- . ':(exclude)scripts/feeds' | grep -q .; then
+          VERSION_LOG=$(git log --since="$(date -d 'yesterday 00:00' '+%Y-%m-%dT%H:%M:%S')" \
+                                --until="$(date -d 'today 00:00' '+%Y-%m-%dT%H:%M:%S')" \
+                                --pretty=format:"%h %s" --no-merges -- . ':(exclude)scripts/feeds')
+          echo "VERSION_LOG=$VERSION_LOG" >> $GITHUB_ENV
+        else
+          echo "VERSION_LOG=Không có cập nhật" >> $GITHUB_ENV
+        fi
+
+    - name: Tạo biến môi trường từ file cấu hình
+      run: |
+        cp $CONFIG_FILE $OPENWRT_PATH/.config
+        cd $OPENWRT_PATH
+        make defconfig > /dev/null 2>&1
+
+        SOURCE_REPO="$(echo $REPO_URL | awk -F '/' '{print $(NF)}')"
+        echo "SOURCE_REPO=$SOURCE_REPO" >> $GITHUB_ENV
+
+        DEVICE_TARGET=$(grep CONFIG_TARGET_BOARD .config | awk -F '"' '{print $2}')
+        echo "DEVICE_TARGET=$DEVICE_TARGET" >> $GITHUB_ENV
+
+        DEVICE_SUBTARGET=$(grep CONFIG_TARGET_SUBTARGET .config | awk -F '"' '{print $2}')
+        echo "DEVICE_SUBTARGET=$DEVICE_SUBTARGET" >> $GITHUB_ENV
+
+    - name: Cache toolchain (tăng tốc build)
+      if: env.CACHE_TOOLCHAIN == 'true'
+      uses: HiGarfield/cachewrtbuild@main
+      with:
+        ccache: false
+        mixkey: ${{ env.SOURCE_REPO }}-${{ env.REPO_BRANCH }}-${{ env.DEVICE_TARGET }}-${{ env.DEVICE_SUBTARGET }}
+        prefix: ${{ env.OPENWRT_PATH }}
+
+    - name: Cập nhật và cài đặt feeds
+      run: |
+        cd $OPENWRT_PATH
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Nạp cấu hình tùy chỉnh
+      run: |
+        [ -e files ] && mv files $OPENWRT_PATH/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE $OPENWRT_PATH/.config
+
+    - name: Tải source các package (dl)
+      run: |
+        cd $OPENWRT_PATH
+        make defconfig
+        make download -j8
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: Biên dịch firmware
+      id: compile
+      run: |
+        cd $OPENWRT_PATH
+        echo "Số luồng build: $(nproc)"
+        make -j$(nproc) || make -j1 || make -j1 V=s
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "DATE=$(date +"%Y-%m-%d %H:%M:%S")" >> $GITHUB_ENV
+        echo "FILE_DATE=$(date +"%Y.%m.%d")" >> $GITHUB_ENV
+
+    - name: Kiểm tra dung lượng sau build
+      if: (!cancelled())
+      run: df -hT
+
+    - name: Sắp xếp file firmware
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        cd $OPENWRT_PATH/bin/targets/*/*
+        cat sha256sums
+        cp $OPENWRT_PATH/.config build.config
+        mv $OPENWRT_PATH/bin/packages/*/*/*.apk packages
+        tar -zcf Packages.tar.gz packages
+        rm -rf packages feeds.buildinfo version.buildinfo
+        echo "FIRMWARE_PATH=$PWD" >> $GITHUB_ENV
+
+    - name: Phát hành firmware lên GitHub Release
+      if: steps.compile.outputs.status == 'success' && env.FIRMWARE_RELEASE == 'true'
+      uses: ncipollo/release-action@v1
+      with:
+        name: R${{ env.DATE }} cho ${{ env.FIRMWARE_TAG }}
+        allowUpdates: true
+        tag: ${{ env.FIRMWARE_TAG }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        artifacts: ${{ env.FIRMWARE_PATH }}/*
+        body: |
+          **OpenWrt Firmware cho ${{ env.FIRMWARE_TAG }}**
+          ### 📒 Thông tin firmware
+          - Kernel Linux 6.6, có Wi-Fi và NSS
+          - Nền tảng: ${{ env.FIRMWARE_TAG }}
+          - Mã nguồn: ${{ env.REPO_URL }}
+          - Nhánh: ${{ env.REPO_BRANCH }}
+          - IP mặc định: 192.168.1.1
+          - Mật khẩu mặc định: password
+          ### 🧊 Phiên bản
+          - Kernel: ${{ env.VERSION_KERNEL }}
+          - Cập nhật mã nguồn gần nhất:
+            ${{ env.VERSION_INFO }}
+          - Log thay đổi:
+            ${{ env.VERSION_LOG }}
