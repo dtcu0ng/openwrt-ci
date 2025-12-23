@@ -84,7 +84,7 @@ jobs:
         echo "VERSION_INFO=$VERSION_INFO" >> $GITHUB_ENV
 
         # Lấy phiên bản kernel
-        VERSION_KERNEL=$(grep -oP 'LINUX_KERNEL_HASH-\K[0-9]+\.[0-9]+\.[0-9]+' include/kernel-6.6)
+        VERSION_KERNEL=$(grep CONFIG_KERNEL_VERSION .config | cut -d'"' -f2)
         echo "VERSION_KERNEL=$VERSION_KERNEL" >> $GITHUB_ENV
 
         # Lấy log commit trong 24h gần nhất
