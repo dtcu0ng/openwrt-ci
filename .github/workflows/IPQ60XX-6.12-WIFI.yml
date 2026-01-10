@@ -72,8 +72,8 @@ jobs:
       run: |
         cp $CONFIG_FILE $OPENWRT_PATH/.config
         cd $OPENWRT_PATH
-        # Use olddefconfig to only set defaults for NEW options, not change existing settings
-        make olddefconfig > /dev/null 2>&1
+        # Use defconfig to only set defaults for NEW options, not change existing settings
+        make defconfig > /dev/null 2>&1
         SOURCE_REPO="$(echo $REPO_URL | awk -F '/' '{print $(NF)}')"
         echo "SOURCE_REPO=$SOURCE_REPO" >> $GITHUB_ENV
         DEVICE_TARGET=$(cat .config | grep CONFIG_TARGET_BOARD | awk -F '"' '{print $2}')
@@ -108,14 +108,14 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_SCRIPT
         # Re-apply config after DIY script (in case script modified it)
         [ -e $CONFIG_FILE ] && cp $CONFIG_FILE $OPENWRT_PATH/.config
-        # Use olddefconfig to preserve explicit "is not set" entries
-        make olddefconfig > /dev/null 2>&1
+        # Use defconfig to preserve explicit "is not set" entries
+        make defconfig > /dev/null 2>&1
 
     - name: Download DL Package
       run: |
         cd $OPENWRT_PATH
-        # Use olddefconfig instead of defconfig to avoid adding unwanted packages
-        make olddefconfig > /dev/null 2>&1
+        # Use defconfig instead of defconfig to avoid adding unwanted packages
+        make defconfig > /dev/null 2>&1
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
