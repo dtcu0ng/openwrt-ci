@@ -11,6 +11,9 @@ sed -i "s/add_list system.ntp.server='ntp.aliyun.com'/add_list system.ntp.server
 sed -i "s/add_list system.ntp.server='ntp.ntsc.ac.cn'/add_list system.ntp.server='2.openwrt.pool.ntp.org'/g" package/base-files/files/bin/config_generate
 sed -i "s/add_list system.ntp.server='cn.ntp.org.cn'/add_list system.ntp.server='3.openwrt.pool.ntp.org'/g" package/base-files/files/bin/config_generate
 
+sed -i 's/CONFIG_TARGET_OPTIMIZATION=.*/CONFIG_TARGET_OPTIMIZATION="-O3 -pipe -mcpu=cortex-a53+crypto+crc"/' .config
+sed -i 's/CONFIG_DEFAULT_TARGET_OPTIMIZATION=.*/CONFIG_DEFAULT_TARGET_OPTIMIZATION="-O3 -pipe -mcpu=cortex-a53+crypto+crc"/' .config
+
 rm -rf package/emortal/luci-app-athena-led
 git clone --depth=1 https://github.com/NONGFAH/luci-app-athena-led package/luci-app-athena-led
 chmod +x package/luci-app-athena-led/root/etc/init.d/athena_led package/luci-app-athena-led/root/usr/sbin/athena-led
