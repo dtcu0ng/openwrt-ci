@@ -110,6 +110,7 @@ jobs:
         [ -e $CONFIG_FILE ] && cp $CONFIG_FILE $OPENWRT_PATH/.config
         # Use defconfig to preserve explicit "is not set" entries
         make defconfig > /dev/null 2>&1
+        $GITHUB_WORKSPACE/$DIY_SCRIPT
 
     - name: Download DL Package
       run: |
