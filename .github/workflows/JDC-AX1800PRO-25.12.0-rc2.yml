@@ -62,6 +62,7 @@ jobs:
         df -hT $GITHUB_WORKSPACE
         git clone --depth 1 -b $REPO_BRANCH $REPO_URL openwrt
         cd openwrt
+        git fetch --depth 1 origin bc0f5615516104477c455b4e594c5d472b485d9a
         git checkout bc0f5615516104477c455b4e594c5d472b485d9a
         echo "OPENWRT_PATH=$PWD" >> $GITHUB_ENV
         VERSION_INFO=$(git show -s --date=short --format="Author: %an<br/>Date: %cd<br/>Message: %s<br/>Hash: %H")
