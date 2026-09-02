@@ -24,13 +24,12 @@ env:
   FIRMWARE_RELEASE: true
   TZ: Asia/Ho_Chi_Minh
 
-concurrency:
-  group: jdc-ax1800pro-${{ matrix.branch }}
-  cancel-in-progress: true
-
 jobs:
   Build:
     runs-on: ubuntu-latest
+    concurrency:
+      group: jdc-ax1800pro-${{ matrix.branch }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
