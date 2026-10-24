@@ -24,8 +24,3 @@ rm -rf package/emortal/luci-app-athena-led
 git clone --depth=1 https://github.com/NONGFAH/luci-app-athena-led package/luci-app-athena-led
 chmod +x package/luci-app-athena-led/root/etc/init.d/athena_led package/luci-app-athena-led/root/usr/sbin/athena-led
 
-# ===== Zapret (DPI Bypass) =====
-if [ ! -d "package/feeds/zapret" ] && [ ! -d "package/zapret-openwrt" ]; then
-  git clone --depth=1 https://github.com/remittor/zapret-openwrt package/zapret-openwrt
-  find package/zapret-openwrt/ -maxdepth 2 -path "*/Makefile" | xargs -i sed -i 's/..\/..\/luci.mk/$(TOPDIR)\/feeds\/luci\/luci.mk/g' {} 2>/dev/null || true
-fi
