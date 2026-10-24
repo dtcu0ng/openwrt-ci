@@ -10,7 +10,6 @@ on:
         type: choice
         options:
           - all
-          - main-nss
           - 25.12-nss
   schedule:
     - cron: '0 17 * * 1'
